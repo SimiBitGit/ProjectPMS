@@ -1,0 +1,23 @@
+# Database & ORM
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+
+# Data Processing & Analysis
+pandas>=2.1.0
+numpy>=1.26.0
+ta-lib>=0.4.0
+
+# Market Data Import
+requests>=2.31.0
+
+# UI
+PySide6>=6.6.0
+pyqtgraph>=0.13.0
+
+# Visualization
+matplotlib>=3.8.0
+plotly>=5.18.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.5.0

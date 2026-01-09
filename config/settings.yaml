@@ -1,0 +1,42 @@
+database:
+  type: sqlite  # sqlite oder postgresql
+  sqlite:
+    path: data/database/portfolio.db
+  postgresql:
+    # Wird aus .env geladen
+    host: ${DB_HOST}
+    port: ${DB_PORT}
+    database: ${DB_NAME}
+    user: ${DB_USER}
+    password: ${DB_PASSWORD}
+
+data_sources:
+  primary: eodhd
+  fallback: null
+  cache_enabled: true
+  cache_duration: 3600  # Sekunden
+  api_timeout: 30  # Sekunden
+
+ui:
+  theme: light
+  default_chart_type: candlestick
+  table_rows_per_page: 100
+  window_width: 1400
+  window_height: 900
+
+logging:
+  level: INFO
+  file: logs/portfolio_manager.log
+  max_bytes: 10485760  # 10 MB
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+analysis:
+  default_indicators:
+    - SMA
+    - MACD
+    - ROC
+  default_periods:
+    sma: [20, 50, 200]
+    macd: [12, 26, 9]
+    roc: [10, 20]
