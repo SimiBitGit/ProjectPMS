@@ -10,10 +10,13 @@ src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
 
 from src.models import (
-    init_engine, 
+    init_engine,
     create_all_tables,
     Base
 )
+# GICS-Model explizit importieren damit die Tabelle registriert wird
+from src.models.gics import GicsReference 
+
 from src.config import config
 from src.utils.logger import get_logger
 

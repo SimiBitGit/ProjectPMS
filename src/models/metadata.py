@@ -1,6 +1,9 @@
 """
-Ticker Model (erweitert) — Stammdaten für Securities, ETFs und FX
+Ticker Model (erweitert) – Stammdaten für Securities, ETFs und FX
 Erweiterung gegenüber Phase 1: GICS-Klassifikation + ETF-spezifische Felder
+
+TODO (Phase 3): GicsReference-Model implementieren und Relationship reaktivieren.
+     Suche nach "# GICS_TODO" um alle betroffenen Stellen zu finden.
 """
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Numeric
@@ -52,51 +55,33 @@ class Ticker(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # ------------------------------------------------------------------
-    # GICS-Klassifikation (NEU)
+    # GICS-Klassifikation
     # ------------------------------------------------------------------
-    # Foreign Key auf gics_reference.sub_industry_code (8-stellig).
-    # Für ETFs: der GICS-Code des abgebildeten Segments.
-    # Für Stocks: der eigene GICS-Code laut Klassifikation.
-    # Für FX/Crypto: NULL.
+    # GICS_TODO: ForeignKey-Constraint vorerst deaktiviert (GicsReference-Tabelle
+    # existiert noch nicht). Spalte bleibt erhalten, wird in Phase 3 reaktiviert.
     gics_sub_industry_code = Column(
         String(8),
-        ForeignKey('gics_reference.sub_industry_code'),
+        # ForeignKey('gics_reference.sub_industry_code'),  # GICS_TODO: reaktivieren
         nullable=True,
         index=True
     )
 
-    # Auf welcher GICS-Ebene operiert dieses Instrument?
-    # Sektor-ETF → SECTOR, einzelne Aktie → SUB_INDUSTRY, etc.
     gics_level = Column(Enum(GicsLevel), nullable=True)
 
-    # Direkte Codes der übergeordneten Ebenen (denormalisiert für Performance)
-    # Werden beim Einfügen aus gics_reference befüllt.
+    # Denormalisierte Codes der übergeordneten GICS-Ebenen (Performance-Optimierung)
     gics_sector_code         = Column(String(2),  nullable=True, index=True)
     gics_industry_group_code = Column(String(4),  nullable=True)
     gics_industry_code       = Column(String(6),  nullable=True)
 
     # ------------------------------------------------------------------
-    # ETF-spezifische Felder (NEU) — nur relevant wenn asset_type = ETF
+    # ETF-spezifische Felder – nur relevant wenn asset_type = ETF
     # ------------------------------------------------------------------
-    # Emittent / Anbieter (z.B. "iShares", "Invesco", "SPDR")
-    etf_provider       = Column(String(100), nullable=True)
-
-    # Zugrundeliegender Index (z.B. "PHLX Semiconductor Sector Index")
-    underlying_index   = Column(String(200), nullable=True)
-
-    # Verwaltete Vermögenswerte in USD (AUM) — Liquiditätsindikator
-    aum_usd            = Column(Numeric(20, 2), nullable=True)
-
-    # Gesamtkostenquote in % (z.B. 0.35 für 0.35%)
-    ter_percent        = Column(Numeric(5, 4), nullable=True)
-
-    # Replikationsmethode
+    etf_provider       = Column(String(100), nullable=True)   # z.B. "iShares", "Invesco"
+    underlying_index   = Column(String(200), nullable=True)   # z.B. "MSCI World Index"
+    aum_usd            = Column(Numeric(20, 2), nullable=True) # AUM in USD
+    ter_percent        = Column(Numeric(5, 4),  nullable=True) # Gesamtkostenquote in %
     replication_method = Column(Enum(EtfReplicationMethod), nullable=True)
-
-    # Primäre Domizil-Börse (z.B. "US", "IE", "DE")
-    domicile           = Column(String(5), nullable=True)
-
-    # ISIN (International Securities Identification Number)
+    domicile           = Column(String(5),  nullable=True)    # z.B. "IE", "US", "DE"
     isin               = Column(String(12), nullable=True, unique=True)
 
     # ------------------------------------------------------------------
@@ -104,18 +89,19 @@ class Ticker(Base):
     # ------------------------------------------------------------------
     market_data    = relationship("MarketData",    back_populates="ticker")
     processed_data = relationship("ProcessedData", back_populates="ticker")
-    gics_classification = relationship(
-        "GicsReference",
-        back_populates="tickers",
-        foreign_keys=[gics_sub_industry_code]
-    )
+
+    # GICS_TODO: Reaktivieren sobald GicsReference-Model existiert (Phase 3)
+    # gics_classification = relationship(
+    #     "GicsReference",
+    #     back_populates="tickers",
+    #     foreign_keys=[gics_sub_industry_code]
+    # )
 
     def __repr__(self):
         return f"<Ticker(symbol='{self.symbol}', type='{self.asset_type}', name='{self.name}')>"
 
     @property
     def gics_full_path(self) -> str | None:
-        """Gibt den GICS-Pfad über das Relationship-Objekt zurück."""
-        if self.gics_classification:
-            return self.gics_classification.full_path
+        """Gibt den GICS-Pfad zurück. Aktiv sobald GicsReference implementiert ist."""
+        # GICS_TODO: return self.gics_classification.full_path if self.gics_classification else None
         return None
