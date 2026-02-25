@@ -8,7 +8,8 @@ TODO (Phase 3): GicsReference-Model implementieren und Relationship reaktivieren
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Numeric
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
+datetime.now(timezone.utc)
 import enum
 from .base import Base
 

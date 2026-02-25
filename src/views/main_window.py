@@ -389,6 +389,7 @@ class MainWindow(QMainWindow):
         self._setup_toolbar()
         self._setup_central_widget()
         self._setup_status_bar()
+        self._setup_controllers()
         self._connect_signals()
         logger.info("MainWindow initialized")
 
@@ -600,19 +601,57 @@ class MainWindow(QMainWindow):
         self.set_status("Bereit")
 
     # ──────────────────────────────────────────
+    #  Controllers
+    # ──────────────────────────────────────────
+
+    def _setup_controllers(self):
+        """Initialisiert die Controller-Schicht (Phase 5)."""
+        self._data_controller = None
+        self._analysis_controller = None
+
+        if not self.session:
+            logger.info("Kein DB-Session — Controller werden nicht initialisiert (Demo-Modus)")
+            return
+
+        try:
+            from src.controllers.data_controller import DataController
+            from src.controllers.analysis_controller import AnalysisController
+
+            # DataController: DataTableWidget.dataEdited → DB mit Audit-Log
+            self._data_controller = DataController(session=self.session, parent=self)
+            self._data_controller.set_status_callback(self.set_status)
+            self._data_controller.connect_table(self.market_data_panel.data_table)
+
+            # AnalysisController: IndicatorsTab → AnalysisService → ChartWidget
+            self._analysis_controller = AnalysisController(session=self.session, parent=self)
+            self._analysis_controller.set_status_callback(self.set_status)
+            self._analysis_controller.connect_ui(
+                indicators_tab=self.market_data_panel.indicators_tab,
+                chart_widget=self.market_data_panel.chart_widget,
+            )
+
+            logger.info("Controller initialisiert: DataController + AnalysisController")
+
+        except Exception as e:
+            logger.error(f"Controller-Initialisierung fehlgeschlagen: {e}", exc_info=True)
+
+    # ──────────────────────────────────────────
     #  Signal Connections
     # ──────────────────────────────────────────
 
     def _connect_signals(self):
         # tickerSelected emittiert TickerItem → nur Symbol weitergeben
         self.ticker_list.tickerSelected.connect(
-            lambda item: self.market_data_panel.on_ticker_selected(item.symbol)
+            lambda item: self._on_ticker_selected(item)
         )
 
         # Menu actions
         self.action_toggle_sidebar.triggered.connect(self._toggle_sidebar)
         self.action_import.triggered.connect(self._open_import_dialog)
         self.action_about.triggered.connect(self._show_about)
+
+        # data_loaded: AnalysisController-Kontext aktualisieren bei Datumsbereich-Änderung
+        self.market_data_panel.data_loaded.connect(self._on_data_loaded)
 
     # ──────────────────────────────────────────
     #  Public API
@@ -638,6 +677,23 @@ class MainWindow(QMainWindow):
 
     def _toggle_sidebar(self, checked: bool):
         self.side_panel.setVisible(checked)
+
+    def _on_ticker_selected(self, item: TickerItem):
+        """
+        Slot: Ticker in der Watchlist ausgewählt.
+        Aktualisiert MarketDataPanel und setzt den AnalysisController-Kontext.
+        """
+        self.market_data_panel.on_ticker_selected(item.symbol)
+
+    def _on_data_loaded(self, symbol: str, bars_count: int):
+        """
+        Slot: MarketDataPanel hat Daten geladen (bei Ticker-Auswahl oder Datumsbereich-Änderung).
+        Aktualisiert den AnalysisController-Kontext mit den neuen Bars.
+        """
+        if self._analysis_controller:
+            bars = self.market_data_panel.chart_widget._bars
+            self._analysis_controller.set_ticker_context(symbol, bars)
+            logger.debug(f"AnalysisController-Kontext aktualisiert: {symbol} ({bars_count} Bars)")
 
     def _open_import_dialog(self):
         from src.views.dialogs.import_dialog import ImportDialog

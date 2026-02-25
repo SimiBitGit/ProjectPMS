@@ -180,10 +180,10 @@ class IndicatorsTab(QWidget):
 
         ctrl_layout.addStretch()
 
-        btn_calc = QPushButton("Berechnen")
-        btn_calc.setObjectName("primaryBtn")
-        btn_calc.setFixedHeight(30)
-        ctrl_layout.addWidget(btn_calc)
+        self.btn_calc = QPushButton("Berechnen")
+        self.btn_calc.setObjectName("primaryBtn")
+        self.btn_calc.setFixedHeight(30)
+        ctrl_layout.addWidget(self.btn_calc)
         layout.addWidget(controls)
 
         self.results_table = QTableWidget(0, 3)
@@ -206,6 +206,9 @@ class MarketDataPanel(QWidget):
     Rechtes Hauptpanel – koordiniert HeaderBar, ChartWidget,
     DataTableWidget und IndicatorsTab.
     """
+
+    # Signal: wird nach erfolgreichem Laden emittiert (symbol, bars_count)
+    data_loaded = Signal(str, int)
 
     def __init__(self, session=None, parent=None):
         super().__init__(parent)
@@ -329,6 +332,9 @@ class MarketDataPanel(QWidget):
                 prev  = sorted_bars[1] if len(sorted_bars) > 1 else None
                 chg   = ((last.close - prev.close) / prev.close * 100) if prev and prev.close else None
                 self.header.set_ticker(self._current_ticker, last.close, chg)
+
+            # Signal für Controller (AnalysisController-Kontext aktualisieren)
+            self.data_loaded.emit(self._current_ticker, len(bars))
 
         except Exception as e:
             logger.error(f"Fehler beim DB-Laden: {e}", exc_info=True)

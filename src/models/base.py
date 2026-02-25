@@ -3,7 +3,7 @@ SQLAlchemy Base Configuration
 Stellt die Basis-Klasse und Engine-Factory für alle Models bereit.
 """
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from typing import Generator
 import os
