@@ -1,15 +1,11 @@
 """
 Ticker Model (erweitert) – Stammdaten für Securities, ETFs und FX
-Erweiterung gegenüber Phase 1: GICS-Klassifikation + ETF-spezifische Felder
-
-TODO (Phase 3): GicsReference-Model implementieren und Relationship reaktivieren.
-     Suche nach "# GICS_TODO" um alle betroffenen Stellen zu finden.
+Erweiterung: GICS-Klassifikation + ETF-spezifische Felder
 """
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Numeric
 from sqlalchemy.orm import relationship
-from datetime import datetime, timezone
-datetime.now(timezone.utc)
+from datetime import datetime
 import enum
 from .base import Base
 
@@ -58,11 +54,9 @@ class Ticker(Base):
     # ------------------------------------------------------------------
     # GICS-Klassifikation
     # ------------------------------------------------------------------
-    # GICS_TODO: ForeignKey-Constraint vorerst deaktiviert (GicsReference-Tabelle
-    # existiert noch nicht). Spalte bleibt erhalten, wird in Phase 3 reaktiviert.
     gics_sub_industry_code = Column(
         String(8),
-        # ForeignKey('gics_reference.sub_industry_code'),  # GICS_TODO: reaktivieren
+        ForeignKey('gics_reference.sub_industry_code'),
         nullable=True,
         index=True
     )
@@ -91,18 +85,19 @@ class Ticker(Base):
     market_data    = relationship("MarketData",    back_populates="ticker")
     processed_data = relationship("ProcessedData", back_populates="ticker")
 
-    # GICS_TODO: Reaktivieren sobald GicsReference-Model existiert (Phase 3)
-    # gics_classification = relationship(
-    #     "GicsReference",
-    #     back_populates="tickers",
-    #     foreign_keys=[gics_sub_industry_code]
-    # )
+    # GICS-Relationship
+    gics_classification = relationship(
+        "GicsReference",
+        back_populates="tickers",
+        foreign_keys=[gics_sub_industry_code],
+    )
 
     def __repr__(self):
         return f"<Ticker(symbol='{self.symbol}', type='{self.asset_type}', name='{self.name}')>"
 
     @property
     def gics_full_path(self) -> str | None:
-        """Gibt den GICS-Pfad zurück. Aktiv sobald GicsReference implementiert ist."""
-        # GICS_TODO: return self.gics_classification.full_path if self.gics_classification else None
+        """Gibt den vollständigen GICS-Hierarchie-Pfad zurück (z.B. 'Information Technology > Semiconductors & ...')."""
+        if self.gics_classification:
+            return self.gics_classification.full_path
         return None

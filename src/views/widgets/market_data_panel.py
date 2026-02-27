@@ -15,7 +15,7 @@ from datetime import date
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QPushButton, QLabel, QDateEdit, QComboBox,
-    QTableWidget, QFrame
+    QTableWidget, QFrame, QSpinBox, QTableWidgetItem
 )
 from PySide6.QtCore import Qt, Signal, QDate, Slot
 
@@ -145,14 +145,27 @@ class HeaderBar(QWidget):
 
 
 class IndicatorsTab(QWidget):
-    """Platzhalter für Analyse-Services (Phase 2)."""
+    """
+    Indikatoren-Tab mit:
+      - Berechnen-Controls (Indikator + Periode + Button)
+      - Liste aktiver Indikatoren mit Entfernen-Buttons
+      - Ergebnis-Tabelle (Datum | Indikator | Wert)
+
+    Signale:
+        indicatorRemoveRequested(str): Name des zu entfernenden Indikators
+        clearAllRequested(): Alle Indikatoren entfernen
+    """
+
+    indicatorRemoveRequested = Signal(str)
+    clearAllRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
+        layout.setSpacing(12)
 
+        # ── Berechnen-Controls ──
         controls = QWidget()
         controls.setStyleSheet(
             "background: #0d1018; border: 1px solid #1e2433; border-radius: 8px;"
@@ -172,11 +185,11 @@ class IndicatorsTab(QWidget):
         lbl2 = QLabel("Periode:")
         lbl2.setStyleSheet("color: #94a3b8; font-size: 12px;")
         ctrl_layout.addWidget(lbl2)
-        self.combo_period = QComboBox()
-        self.combo_period.addItems(["5", "10", "20", "50", "100", "200"])
-        self.combo_period.setCurrentText("20")
-        self.combo_period.setFixedWidth(80)
-        ctrl_layout.addWidget(self.combo_period)
+        self.spin_period = QSpinBox()
+        self.spin_period.setRange(1, 999)
+        self.spin_period.setValue(20)
+        self.spin_period.setFixedWidth(80)
+        ctrl_layout.addWidget(self.spin_period)
 
         ctrl_layout.addStretch()
 
@@ -186,19 +199,130 @@ class IndicatorsTab(QWidget):
         ctrl_layout.addWidget(self.btn_calc)
         layout.addWidget(controls)
 
+        # ── Aktive Indikatoren ──
+        self.lbl_active_title = QLabel("AKTIVE INDIKATOREN")
+        self.lbl_active_title.setStyleSheet(
+            "color: #64748b; font-size: 10px; font-weight: 600; "
+            "letter-spacing: 1.2px; padding-top: 4px;"
+        )
+        layout.addWidget(self.lbl_active_title)
+
+        self.active_list_container = QWidget()
+        self.active_list_layout = QVBoxLayout(self.active_list_container)
+        self.active_list_layout.setContentsMargins(0, 0, 0, 0)
+        self.active_list_layout.setSpacing(4)
+        layout.addWidget(self.active_list_container)
+
+        self.lbl_no_indicators = QLabel("Keine Indikatoren aktiv")
+        self.lbl_no_indicators.setAlignment(Qt.AlignCenter)
+        self.lbl_no_indicators.setStyleSheet("color: #334155; font-size: 12px; padding: 8px;")
+        self.active_list_layout.addWidget(self.lbl_no_indicators)
+
+        # "Alle entfernen" Button (anfangs versteckt)
+        self.btn_clear_all = QPushButton("Alle entfernen")
+        self.btn_clear_all.setObjectName("dangerBtn")
+        self.btn_clear_all.setFixedHeight(26)
+        self.btn_clear_all.setFixedWidth(120)
+        self.btn_clear_all.setVisible(False)
+        self.btn_clear_all.clicked.connect(self.clearAllRequested.emit)
+        layout.addWidget(self.btn_clear_all, alignment=Qt.AlignRight)
+
+        # ── Ergebnis-Tabelle ──
+        self.lbl_results_title = QLabel("ERGEBNIS-WERTE")
+        self.lbl_results_title.setStyleSheet(
+            "color: #64748b; font-size: 10px; font-weight: 600; "
+            "letter-spacing: 1.2px; padding-top: 8px;"
+        )
+        layout.addWidget(self.lbl_results_title)
+
         self.results_table = QTableWidget(0, 3)
         self.results_table.setHorizontalHeaderLabels(["Datum", "Indikator", "Wert"])
         self.results_table.horizontalHeader().setStretchLastSection(True)
         self.results_table.verticalHeader().setVisible(False)
         self.results_table.setFrameShape(QFrame.NoFrame)
         self.results_table.setAlternatingRowColors(True)
-        layout.addWidget(self.results_table)
+        layout.addWidget(self.results_table, 1)
 
-        hint = QLabel("Wähle einen Indikator und klicke «Berechnen»")
-        hint.setAlignment(Qt.AlignCenter)
-        hint.setStyleSheet("color: #334155; font-size: 13px;")
-        layout.addWidget(hint)
-        layout.addStretch()
+    # ──────────────────────────────────────────
+    #  Aktive-Indikatoren-Liste verwalten
+    # ──────────────────────────────────────────
+
+    def add_active_indicator(self, key: str, display_name: str, color: str = "#F5A623"):
+        """Fügt einen Eintrag zur aktiven Indikatoren-Liste hinzu."""
+        self.lbl_no_indicators.setVisible(False)
+        self.btn_clear_all.setVisible(True)
+
+        row = QWidget()
+        row.setObjectName("indicatorRow")
+        row.setStyleSheet(
+            "QWidget#indicatorRow { background: #0d1018; "
+            "border: 1px solid #1e2433; border-radius: 6px; }"
+        )
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(12, 6, 8, 6)
+        row_layout.setSpacing(10)
+
+        # Farbpunkt
+        dot = QLabel("●")
+        dot.setStyleSheet(f"color: {color}; font-size: 14px; border: none;")
+        dot.setFixedWidth(18)
+        row_layout.addWidget(dot)
+
+        # Name
+        lbl_name = QLabel(display_name)
+        lbl_name.setStyleSheet("color: #e2e8f0; font-size: 12px; font-weight: 500; border: none;")
+        row_layout.addWidget(lbl_name, 1)
+
+        # Entfernen-Button
+        btn_remove = QPushButton("✕")
+        btn_remove.setFixedSize(24, 24)
+        btn_remove.setStyleSheet(
+            "QPushButton { background: transparent; color: #64748b; "
+            "border: 1px solid #2d3748; border-radius: 4px; font-size: 11px; }"
+            "QPushButton:hover { background: #450a0a; color: #f87171; border-color: #7f1d1d; }"
+        )
+        btn_remove.setToolTip(f"{display_name} entfernen")
+        btn_remove.clicked.connect(lambda _, k=key: self.indicatorRemoveRequested.emit(k))
+        row_layout.addWidget(btn_remove)
+
+        row.setProperty("indicator_key", key)
+        self.active_list_layout.addWidget(row)
+
+    def remove_active_indicator(self, key: str):
+        """Entfernt einen Eintrag aus der aktiven Indikatoren-Liste."""
+        for i in range(self.active_list_layout.count()):
+            widget = self.active_list_layout.itemAt(i).widget()
+            if widget and widget.property("indicator_key") == key:
+                widget.setParent(None)
+                widget.deleteLater()
+                break
+
+        # Prüfen ob noch Indikatoren aktiv sind
+        has_indicators = False
+        for i in range(self.active_list_layout.count()):
+            widget = self.active_list_layout.itemAt(i).widget()
+            if widget and widget.property("indicator_key"):
+                has_indicators = True
+                break
+
+        if not has_indicators:
+            self.lbl_no_indicators.setVisible(True)
+            self.btn_clear_all.setVisible(False)
+
+    def clear_active_indicators(self):
+        """Entfernt alle Einträge aus der aktiven Indikatoren-Liste."""
+        to_remove = []
+        for i in range(self.active_list_layout.count()):
+            widget = self.active_list_layout.itemAt(i).widget()
+            if widget and widget.property("indicator_key"):
+                to_remove.append(widget)
+
+        for widget in to_remove:
+            widget.setParent(None)
+            widget.deleteLater()
+
+        self.lbl_no_indicators.setVisible(True)
+        self.btn_clear_all.setVisible(False)
 
 
 class MarketDataPanel(QWidget):

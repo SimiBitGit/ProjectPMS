@@ -521,8 +521,9 @@ class MainWindow(QMainWindow):
         btn_import.setToolTip("Marktdaten von EoD Historical Data importieren")
 
         # Update Button
-        btn_update = toolbar.addAction("↻  Aktualisieren")
-        btn_update.setToolTip("Alle Ticker auf den neuesten Stand bringen")
+        self.btn_update = toolbar.addAction("↻  Aktualisieren")
+        self.btn_update.setToolTip("Alle Ticker auf den neuesten Stand bringen")
+        self.btn_update.triggered.connect(self._open_update_dialog)
 
         toolbar.addSeparator()
 
@@ -648,6 +649,7 @@ class MainWindow(QMainWindow):
         # Menu actions
         self.action_toggle_sidebar.triggered.connect(self._toggle_sidebar)
         self.action_import.triggered.connect(self._open_import_dialog)
+        self.action_update_all.triggered.connect(self._open_update_dialog)
         self.action_about.triggered.connect(self._show_about)
 
         # data_loaded: AnalysisController-Kontext aktualisieren bei Datumsbereich-Änderung
@@ -700,6 +702,18 @@ class MainWindow(QMainWindow):
         dialog = ImportDialog(session=self.session, parent=self)
         dialog.import_completed.connect(self._on_import_completed)
         dialog.exec()
+
+    def _open_update_dialog(self):
+        from src.views.dialogs.update_dialog import UpdateAllDialog
+        dialog = UpdateAllDialog(session=self.session, parent=self)
+        dialog.update_completed.connect(self._on_update_completed)
+        dialog.exec()
+
+    def _on_update_completed(self, total_tickers: int, total_inserted: int):
+        self.set_status(
+            f"Update abgeschlossen: {total_tickers} Ticker, {total_inserted} neue Datensätze"
+        )
+        self._reload_ticker_list()
 
     def _on_import_completed(self, symbol: str, count: int):
         self.set_status(f"Import abgeschlossen: {count} Datensätze für {symbol} importiert")

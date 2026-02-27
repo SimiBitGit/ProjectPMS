@@ -19,6 +19,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.models.base import Base
 from src.models.metadata import Ticker, AssetType
+from src.models.gics import GicsReference  # Muss importiert sein damit FK-Constraint funktioniert
 from src.models.market_data import MarketData, DataEditLog
 from src.models.processed_data import ProcessedData
 from src.views.widgets.chart_widget import OHLCVBar

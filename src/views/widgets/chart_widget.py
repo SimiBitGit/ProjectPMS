@@ -480,16 +480,20 @@ class ChartWidget(QWidget):
     """
 
     barHovered = Signal(int)
+    indicatorRemoved = Signal(str)   # Emitted when indicator deleted via keyboard
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._bars:       list[OHLCVBar]       = []
         self._indicators: list[IndicatorSeries] = []
-        self._ind_items:  list                  = []
+        self._ind_items:  list                  = []   # PlotDataItem list
+        self._ind_item_names: dict = {}                # PlotDataItem → indicator name
         self._color_idx   = 0
         self._sync_slider = True   # Verhindert Rückkopplungsschleifen
         self._slider_connected = False
+        self._selected_indicator: str | None = None    # Aktuell selektierter Indikator-Name
 
+        self.setFocusPolicy(Qt.StrongFocus)  # Damit keyPressEvent funktioniert
         self._build_ui()
 
     # ------------------------------------------------------------------
@@ -631,6 +635,9 @@ class ChartWidget(QWidget):
         # Zoom → Slider synchronisieren
         self._plot_main.sigXRangeChanged.connect(self._on_xrange_changed)
 
+        # Klick auf Chart → Indikator selektieren
+        self._gw.scene().sigMouseClicked.connect(self._on_scene_clicked)
+
     def _style_plot(self, plot: pg.PlotItem) -> None:
         plot.showGrid(x=True, y=True, alpha=0.15)
         plot.getAxis("bottom").setStyle(
@@ -724,9 +731,55 @@ class ChartWidget(QWidget):
             except Exception:
                 pass
         self._ind_items.clear()
+        self._ind_item_names.clear()
         self._indicators.clear()
         self._color_idx = 0
+        self._selected_indicator = None
         self._plot_sub.hide()
+
+    def remove_indicator(self, name: str) -> None:
+        """
+        Entfernt einen einzelnen Indikator anhand seines Namens.
+
+        Parameters
+        ----------
+        name : str
+            Name des Indikators (z.B. "SMA 20", "MACD", "Signal")
+        """
+        # Alle Indikatoren mit diesem Namen sammeln
+        to_keep = [s for s in self._indicators if s.name != name]
+        if len(to_keep) == len(self._indicators):
+            return  # Nichts zum Entfernen
+
+        # Alles neu zeichnen (einfachster sicherer Weg)
+        self._indicators = to_keep
+        for item in self._ind_items:
+            try:
+                item.getViewBox().removeItem(item)
+            except Exception:
+                pass
+        self._ind_items.clear()
+        self._ind_item_names.clear()
+        self._color_idx = 0
+
+        if self._selected_indicator == name:
+            self._selected_indicator = None
+
+        # Sub-Panel nur zeigen wenn noch sub-Indikatoren vorhanden
+        has_sub = any(s.panel == "sub" for s in self._indicators)
+        if not has_sub:
+            self._plot_sub.hide()
+
+        # Verbliebene Indikatoren neu zeichnen
+        for series in self._indicators:
+            if not series.color:
+                series.color = INDICATOR_COLORS[self._color_idx % len(INDICATOR_COLORS)]
+            self._color_idx += 1
+            self._draw_indicator(series)
+
+    def get_active_indicator_names(self) -> list[str]:
+        """Gibt die Namen aller aktuell angezeigten Indikatoren zurück."""
+        return [s.name for s in self._indicators]
 
     def set_period(self, days: int) -> None:
         """Zoomt auf die letzten `days` Bars (0 = alles)."""
@@ -802,13 +855,105 @@ class ChartWidget(QWidget):
         segments = self._split_nan_segments(x, y)
         for sx, sy in segments:
             item = target.plot(sx, sy, pen=pen, name=series.name)
+            # Breitere unsichtbare Hover-Zone für einfacheres Klicken
+            item.setCurveClickable(True, width=12)
             self._ind_items.append(item)
+            self._ind_item_names[id(item)] = series.name
 
     def _redraw_indicators(self) -> None:
         old = list(self._indicators)
         self.clear_indicators()
         for series in old:
             self.add_indicator(series)
+
+    # ------------------------------------------------------------------
+    #  Indikator-Selektion (Klick + Delete)
+    # ------------------------------------------------------------------
+
+    def _on_scene_clicked(self, event) -> None:
+        """Klick im Chart → prüfe ob eine Indikator-Linie getroffen wurde."""
+        if event.button() != Qt.LeftButton:
+            return
+
+        pos = event.scenePos()
+        clicked_name = None
+
+        # Prüfe alle Indikator-Items (PlotDataItem → .curve ist PlotCurveItem)
+        for item in self._ind_items:
+            try:
+                curve = item.curve
+                local_pos = curve.mapFromScene(pos)
+                if curve.mouseShape().contains(local_pos):
+                    clicked_name = self._ind_item_names.get(id(item))
+                    break
+            except Exception:
+                continue
+
+        if clicked_name:
+            self._select_indicator(clicked_name)
+            self.setFocus()
+        else:
+            self._deselect_indicator()
+
+    def _select_indicator(self, name: str) -> None:
+        """Markiert einen Indikator als selektiert (visuelle Hervorhebung)."""
+        self._deselect_indicator()  # Vorherige Selektion aufheben
+        self._selected_indicator = name
+
+        # Selektierte Linie dicker + heller, andere dimmen
+        for item in self._ind_items:
+            item_name = self._ind_item_names.get(id(item))
+            current_pen = item.opts.get("pen", pg.mkPen("w"))
+            if isinstance(current_pen, pg.QtGui.QPen):
+                color = current_pen.color()
+                width = current_pen.widthF()
+            else:
+                color = QColor("#FFFFFF")
+                width = 1.5
+
+            if item_name == name:
+                # Selektiert: breiter + volle Opazität
+                highlight_pen = pg.mkPen(color=color, width=width + 1.5)
+                item.setPen(highlight_pen)
+                item.setZValue(10)
+            else:
+                # Nicht selektiert: gedimmt
+                dimmed = QColor(color)
+                dimmed.setAlphaF(0.3)
+                dim_pen = pg.mkPen(color=dimmed, width=width)
+                item.setPen(dim_pen)
+                item.setZValue(0)
+
+        logger.debug(f"Indikator selektiert: {name} (Delete zum Entfernen)")
+
+    def _deselect_indicator(self) -> None:
+        """Hebt die Selektion auf und stellt Original-Darstellung wieder her."""
+        if self._selected_indicator is None:
+            return
+        self._selected_indicator = None
+
+        # Alle Indikatoren neu zeichnen mit Originalfarben
+        for item in self._ind_items:
+            try:
+                item.getViewBox().removeItem(item)
+            except Exception:
+                pass
+        self._ind_items.clear()
+        self._ind_item_names.clear()
+
+        for series in self._indicators:
+            self._draw_indicator(series)
+
+    def keyPressEvent(self, event) -> None:
+        """Delete/Backspace entfernt den selektierten Indikator."""
+        if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
+            if self._selected_indicator:
+                name = self._selected_indicator
+                self.remove_indicator(name)
+                self.indicatorRemoved.emit(name)
+                logger.info(f"Indikator per Tastatur entfernt: {name}")
+                return
+        super().keyPressEvent(event)
 
     @staticmethod
     def _split_nan_segments(
